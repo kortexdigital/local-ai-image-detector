@@ -9,7 +9,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Generators deliberately excluded from training. Balanced accuracy on these is
 # the only honest estimate of performance on an unseen evaluation set.
-HELD_OUT_GENERATORS: tuple[str, ...] = ("flux", "midjourney-v6", "stylegan3")
+#
+# The three are chosen to be structurally unlike each other, so clearing this
+# bar means the head generalizes across architectures rather than across
+# variants of one: FLUX is a modern rectified-flow transformer, nano-banana is
+# a 2025 Gemini image model, and BigGAN predates diffusion entirely.
+HELD_OUT_GENERATORS: tuple[str, ...] = ("flux", "nano-banana", "biggan")
 
 
 @dataclass(frozen=True)
