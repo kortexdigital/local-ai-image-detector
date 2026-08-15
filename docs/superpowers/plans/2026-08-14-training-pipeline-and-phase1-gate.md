@@ -18,7 +18,7 @@
 - Every random operation takes an explicit seed. No bare `random` or `np.random` global state.
 - Repository license is MIT. Before any model weight is downloaded or committed, its license is checked and recorded in `models/LICENSES.md`.
 - All public-facing artifacts (README, code comments, commit messages, docstrings) are written in **English**. Design and plan documents stay in Portuguese.
-- No public artifact in this repository mentions bounties, prizes, prize pools, payouts, or money of any kind. This is a hard rule, not a style preference.
+- No public artifact in this repository discusses funding or compensation of any kind. This is a hard rule, not a style preference.
 - Disk budget for Phase 1 is 15 GB total under `data/`. `data/` is gitignored.
 - Cached images are always re-encoded through one single code path regardless of class. Real and synthetic images must carry identical re-encode signatures, or the head learns the cache format instead of the task.
 

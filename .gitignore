@@ -14,3 +14,4 @@ data/
 # itself are versioned, because without them the build cannot run from a
 # clean clone.
 models/backbones/*/onnx/
+models/clip-vit-b32/

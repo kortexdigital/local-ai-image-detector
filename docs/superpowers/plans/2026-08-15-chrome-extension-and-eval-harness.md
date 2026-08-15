@@ -22,7 +22,7 @@ These come from the challenge rules and are non-negotiable. Every task inherits 
 - **MIT license**, `LICENSE` at repository root, and every bundled weight under a compatible permissive license recorded in `models/LICENSES.md`.
 - **Reproducible from source.** `npm run build` produces `dist/` from a clean checkout, with SHA-256 verification of every downloaded artifact.
 - **Confidence score displayed for every analyzed image**, and the flag threshold is 0.65 to match the evaluation.
-- Public artifacts (README, code comments, commit messages) in **English**. No mention of bounties, prizes or money anywhere in the repository.
+- Public artifacts (README, code comments, commit messages) in **English**. No discussion of funding or compensation anywhere in the repository.
 - Manifest V3 CSP for extension pages: `script-src 'self' 'wasm-unsafe-eval'; object-src 'self'`. No remote script, no `eval`.
 - WASM threads stay off (`ort.env.wasm.numThreads = 1`): threading needs cross-origin isolation, which extension pages cannot reliably obtain.
 
