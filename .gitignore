@@ -1,15 +1,16 @@
 node_modules/
 dist/
+.build-cache/
 __pycache__/
 *.pyc
 .venv/
 venv/
 data/
-features/*.npy
-*.onnx
-!models/head.onnx
 .DS_Store
 .env
-node_modules/
-dist/
-.build-cache/
+
+# Downloaded model weights are large and fetched by the build, pinned by
+# SHA-256 in scripts/assets.json. The small graphs this repository produces
+# itself are versioned, because without them the build cannot run from a
+# clean clone.
+models/backbones/*/onnx/
