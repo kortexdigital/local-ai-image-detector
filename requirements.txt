@@ -1,0 +1,9 @@
+datasets==5.0.1
+huggingface-hub==1.27.0
+numpy==2.5.2
+onnx==1.17.0
+onnxruntime==1.20.1
+pillow==12.3.0
+pyarrow==25.0.1
+pytest==9.1.1
+scikit-learn==1.9.0
