@@ -42,6 +42,17 @@ BACKBONES: tuple[Backbone, ...] = (
         spec=CLIP_SPEC,
         license_name="MIT",
     ),
+    # The int8 export is what the extension can realistically ship: the fp32
+    # graph is roughly 350 MB. Training runs on this same quantized graph, so
+    # the browser and the training pipeline stay bit-for-bit the same model
+    # rather than a full-precision model approximated at serving time.
+    Backbone(
+        key="clip-vit-b32-int8",
+        repo_id="Xenova/clip-vit-base-patch32",
+        filename="onnx/vision_model_quantized.onnx",
+        spec=CLIP_SPEC,
+        license_name="MIT",
+    ),
     Backbone(
         key="siglip-base-p16",
         repo_id="Xenova/siglip-base-patch16-224",
