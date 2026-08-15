@@ -1,0 +1,25 @@
+{
+  "comment": [
+    "Artifacts fetched at build time. Every entry is pinned by SHA-256, so a",
+    "build either reproduces exactly what was measured or fails loudly.",
+    "",
+    "The ONNX Runtime Web distribution is not listed here: it is a locked npm",
+    "devDependency and the build copies it out of node_modules, which makes it",
+    "reproducible through package-lock.json without a second hash list."
+  ],
+  "backbone": {
+    "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_quantized.onnx",
+    "dest": "models/vision_model.onnx",
+    "sha256": "583fd1110a514667812fee7d684952aaf82a99b959760c8d7dca7e0ab9839299",
+    "bytes": 89117001,
+    "source": "Xenova/clip-vit-base-patch32, an ONNX export of openai/clip-vit-base-patch32",
+    "license": "MIT"
+  },
+  "ortFiles": [
+    "ort.min.js",
+    "ort-wasm-simd-threaded.wasm",
+    "ort-wasm-simd-threaded.mjs",
+    "ort-wasm-simd-threaded.jsep.wasm",
+    "ort-wasm-simd-threaded.jsep.mjs"
+  ]
+}

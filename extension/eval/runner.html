@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Local AI Image Detector evaluation runner</title>
+  </head>
+  <body>
+    <!--
+      A page inside the extension that exposes the shipped scoring function to
+      an automation driver. It runs the same graphs, the same preprocessing and
+      the same calibration the browsing path runs; measuring through it means
+      the reported number describes the extension itself rather than a
+      reimplementation of it in the harness.
+
+      It reaches nothing over the network and does nothing on its own. Loading
+      it changes no behaviour of the extension.
+    -->
+    <h1>Evaluation runner</h1>
+    <p id="state">initializing</p>
+    <script src="../vendor/ort/ort.min.js"></script>
+    <script type="module" src="runner.js"></script>
+  </body>
+</html>
