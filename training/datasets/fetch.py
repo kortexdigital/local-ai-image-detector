@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 
-from training.datasets.manifest import ManifestRow, write_manifest
+from training.datasets.manifest import ManifestRow, read_manifest, write_manifest
 from training.datasets.normalize import CacheError, normalize_for_cache
 from training.datasets.sources import SOURCES, Source
 
@@ -128,7 +128,28 @@ def _harvest_shard(
     return rows
 
 
-def fetch_source(source: Source, cache_dir: Path, seed: int) -> list[ManifestRow]:
+def remaining_for_source(source: Source, existing: list[ManifestRow]) -> int:
+    """How many more images this source still owes, given what is cached."""
+    have = sum(1 for row in existing if row.source_key == source.key)
+    return max(0, source.target_count - have)
+
+
+def merge_manifest_rows(
+    existing: list[ManifestRow], fresh: list[ManifestRow]
+) -> list[ManifestRow]:
+    """Append rows that are genuinely new, keyed by content digest."""
+    seen = {row.sha256 for row in existing}
+    merged = list(existing)
+    for row in fresh:
+        if row.sha256 not in seen:
+            seen.add(row.sha256)
+            merged.append(row)
+    return merged
+
+
+def fetch_source(
+    source: Source, cache_dir: Path, seed: int, target_override: int | None = None
+) -> list[ManifestRow]:
     # zlib.crc32 rather than hash(): str hashing is salted per process unless
     # PYTHONHASHSEED is pinned, which would make runs unreproducible.
     rng = np.random.default_rng(seed + zlib.crc32(source.key.encode("utf-8")))
@@ -146,9 +167,11 @@ def fetch_source(source: Source, cache_dir: Path, seed: int) -> list[ManifestRow
     # dataset, which would correlate every image we cache from it.
     shards_ordered = [shards[int(i)] for i in rng.permutation(len(shards))]
 
+    target = source.target_count if target_override is None else target_override
+
     collected: list[ManifestRow] = []
     for shard_url in shards_ordered[:MAX_SHARDS_PER_SOURCE]:
-        if len(collected) >= source.target_count:
+        if len(collected) >= target:
             break
         with tempfile.TemporaryDirectory() as tmp:
             shard_path = Path(tmp) / "shard.parquet"
@@ -160,37 +183,48 @@ def fetch_source(source: Source, cache_dir: Path, seed: int) -> list[ManifestRow
             try:
                 collected.extend(
                     _harvest_shard(
-                        shard_path,
-                        source,
-                        cache_dir,
-                        source.target_count - len(collected),
-                        rng,
+                        shard_path, source, cache_dir, target - len(collected), rng
                     )
                 )
             except Exception:
                 log.exception("source %s: shard unreadable", source.key)
                 continue
-        log.info(
-            "source %s: %d/%d cached", source.key, len(collected), source.target_count
-        )
+        log.info("source %s: %d/%d cached", source.key, len(collected), target)
 
-    if len(collected) < source.target_count:
+    if len(collected) < target:
         log.warning(
             "source %s: only %d of %d requested images were cached",
             source.key,
             len(collected),
-            source.target_count,
+            target,
         )
     return collected
 
 
 def fetch_all(cache_dir: Path, manifest_path: Path, seed: int) -> list[ManifestRow]:
-    all_rows: list[ManifestRow] = []
+    """Fetch every source, resuming from whatever the manifest already holds.
+
+    This is a long network operation and it does get interrupted. Rebuilding
+    the manifest from scratch on a rerun would be destructive: deduplication
+    makes an already-complete source yield zero new rows, so a naive rerun
+    would replace a full manifest with only the handful of newly added rows.
+    """
+    existing = read_manifest(manifest_path) if manifest_path.exists() else []
+    if existing:
+        log.info("resuming with %d images already in the manifest", len(existing))
+
     for source in SOURCES:
+        remaining = remaining_for_source(source, existing)
+        if remaining == 0:
+            log.info("source %s: already complete, skipping", source.key)
+            continue
         try:
-            all_rows.extend(fetch_source(source, cache_dir, seed))
+            fresh = fetch_source(source, cache_dir, seed, target_override=remaining)
         except Exception:
             log.exception("source %s failed, continuing", source.key)
-        write_manifest(all_rows, manifest_path)
-    log.info("cached %d images in total", len(all_rows))
-    return all_rows
+            continue
+        existing = merge_manifest_rows(existing, fresh)
+        write_manifest(existing, manifest_path)
+
+    log.info("cached %d images in total", len(existing))
+    return existing
