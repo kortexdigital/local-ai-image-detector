@@ -39,10 +39,31 @@ def test_sha256_is_of_the_normalized_bytes_not_the_input(tmp_path: Path):
     assert row.sha256 != hashlib.sha256(raw).hexdigest()
 
 
-def test_duplicate_image_is_skipped(tmp_path: Path):
+def test_duplicate_image_is_skipped_when_its_digest_is_already_known(tmp_path: Path):
     raw = _png()
-    assert cache_image(raw, SRC, tmp_path) is not None
-    assert cache_image(raw, SRC, tmp_path) is None
+    known: set[str] = set()
+    first = cache_image(raw, SRC, tmp_path, known)
+    assert first is not None
+    assert first.sha256 in known
+    assert cache_image(raw, SRC, tmp_path, known) is None
+
+
+def test_a_file_on_disk_without_a_manifest_entry_is_still_recovered(tmp_path: Path):
+    """An interrupted run leaves images written but unrecorded.
+
+    If presence on disk were treated as proof of a manifest entry, those
+    images could never be recovered: every retry would report zero new
+    images while the manifest stayed short.
+    """
+    raw = _png()
+    orphan = cache_image(raw, SRC, tmp_path, known=None)
+    assert orphan is not None
+    assert (tmp_path / orphan.relpath).exists()
+
+    # Same bytes, fresh run whose manifest does not list this digest yet.
+    recovered = cache_image(raw, SRC, tmp_path, known=set())
+    assert recovered is not None
+    assert recovered.sha256 == orphan.sha256
 
 
 def test_undecodable_image_is_skipped_not_raised(tmp_path: Path):

@@ -48,21 +48,41 @@ def image_bytes_from_cell(cell) -> bytes | None:
     return None
 
 
-def cache_image(raw: bytes, source: Source, cache_dir: Path) -> ManifestRow | None:
-    """Normalize and store one image. Returns None if unusable or duplicate."""
+def cache_image(
+    raw: bytes,
+    source: Source,
+    cache_dir: Path,
+    known: set[str] | None = None,
+) -> ManifestRow | None:
+    """Normalize and store one image, returning its manifest row.
+
+    Deduplication is against `known`, the digests the manifest already lists,
+    rather than against the presence of the file on disk. Those two can
+    disagree: an interrupted run leaves images written but unrecorded, and
+    treating the file as proof of a manifest entry makes that state
+    unrecoverable, because every retry then reports zero new images while the
+    manifest stays short.
+
+    Returns None only when the bytes are undecodable or the digest is already
+    known.
+    """
     try:
         normalized = normalize_for_cache(raw)
     except CacheError:
         return None
 
     digest = hashlib.sha256(normalized).hexdigest()
-    relpath = f"{source.generator}/{digest}.jpg"
-    target = cache_dir / relpath
-    if target.exists():
+    if known is not None and digest in known:
         return None
 
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(normalized)
+    relpath = f"{source.generator}/{digest}.jpg"
+    target = cache_dir / relpath
+    if not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(normalized)
+
+    if known is not None:
+        known.add(digest)
     return ManifestRow(
         sha256=digest,
         relpath=relpath,
@@ -98,7 +118,12 @@ def _download(url: str, target: Path) -> None:
 
 
 def _harvest_shard(
-    shard_path: Path, source: Source, cache_dir: Path, needed: int, rng
+    shard_path: Path,
+    source: Source,
+    cache_dir: Path,
+    needed: int,
+    rng,
+    known: set[str],
 ) -> list[ManifestRow]:
     """Pull up to `needed` images out of one shard.
 
@@ -121,7 +146,7 @@ def _harvest_shard(
             raw = image_bytes_from_cell(cells[int(cell_index)])
             if raw is None:
                 continue
-            row = cache_image(raw, source, cache_dir)
+            row = cache_image(raw, source, cache_dir, known)
             if row is not None:
                 rows.append(row)
         del cells, table
@@ -148,7 +173,11 @@ def merge_manifest_rows(
 
 
 def fetch_source(
-    source: Source, cache_dir: Path, seed: int, target_override: int | None = None
+    source: Source,
+    cache_dir: Path,
+    seed: int,
+    target_override: int | None = None,
+    known: set[str] | None = None,
 ) -> list[ManifestRow]:
     # zlib.crc32 rather than hash(): str hashing is salted per process unless
     # PYTHONHASHSEED is pinned, which would make runs unreproducible.
@@ -168,6 +197,7 @@ def fetch_source(
     shards_ordered = [shards[int(i)] for i in rng.permutation(len(shards))]
 
     target = source.target_count if target_override is None else target_override
+    known = set() if known is None else known
 
     collected: list[ManifestRow] = []
     for shard_url in shards_ordered[:MAX_SHARDS_PER_SOURCE]:
@@ -183,7 +213,12 @@ def fetch_source(
             try:
                 collected.extend(
                     _harvest_shard(
-                        shard_path, source, cache_dir, target - len(collected), rng
+                        shard_path,
+                        source,
+                        cache_dir,
+                        target - len(collected),
+                        rng,
+                        known,
                     )
                 )
             except Exception:
@@ -210,6 +245,7 @@ def fetch_all(cache_dir: Path, manifest_path: Path, seed: int) -> list[ManifestR
     would replace a full manifest with only the handful of newly added rows.
     """
     existing = read_manifest(manifest_path) if manifest_path.exists() else []
+    known = {row.sha256 for row in existing}
     if existing:
         log.info("resuming with %d images already in the manifest", len(existing))
 
@@ -219,7 +255,9 @@ def fetch_all(cache_dir: Path, manifest_path: Path, seed: int) -> list[ManifestR
             log.info("source %s: already complete, skipping", source.key)
             continue
         try:
-            fresh = fetch_source(source, cache_dir, seed, target_override=remaining)
+            fresh = fetch_source(
+                source, cache_dir, seed, target_override=remaining, known=known
+            )
         except Exception:
             log.exception("source %s failed, continuing", source.key)
             continue
