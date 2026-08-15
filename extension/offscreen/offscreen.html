@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Local AI Image Detector inference host</title>
+  </head>
+  <body>
+    <!--
+      This document exists only to give ONNX Runtime Web a context with
+      WebGPU and OffscreenCanvas. It is never shown. Running inference here
+      instead of in the content script means the model is loaded once per
+      browser rather than once per tab.
+
+      ort.min.js is a local file. The extension CSP forbids remote script, and
+      nothing here reaches the network.
+    -->
+    <script src="../vendor/ort/ort.min.js"></script>
+    <script type="module" src="offscreen.js"></script>
+  </body>
+</html>
