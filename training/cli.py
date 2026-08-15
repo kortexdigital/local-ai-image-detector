@@ -20,7 +20,7 @@ from training.datasets.fetch import fetch_all
 from training.export.head_onnx import export_calibration, export_head
 from training.features.extract import extract_all
 from training.head.calibrate import apply, fit_calibration
-from training.head.splits import make_splits
+from training.head.splits import make_splits, split_for_calibration
 from training.head.train import l2_normalize, raw_scores, train_head
 from training.report import evaluate, render_markdown
 
@@ -51,19 +51,29 @@ def _train_and_report(backbone_key: str, sharpness: float) -> int:
     normalized = l2_normalize(features.astype(np.float32))
     scores = raw_scores(head, normalized)
 
-    # Calibration is fitted on the held-out generators, because that is the
-    # distribution the decision threshold has to be right for.
-    cal = fit_calibration(
-        scores[split.val_unseen],
+    # The threshold is fitted on the held-out generators, because that is the
+    # distribution it has to be right for, but on a different half from the
+    # one reported. Fitting and reporting on the same images would choose the
+    # threshold knowing the answers and overstate the result.
+    generators_arr = np.asarray(generators)
+    calib_idx, report_idx = split_for_calibration(
+        split.val_unseen,
+        generators_arr[split.val_unseen],
         labels[split.val_unseen],
+        CONFIG.seed,
+    )
+
+    cal = fit_calibration(
+        scores[calib_idx],
+        labels[calib_idx],
         CONFIG.decision_confidence,
         sharpness=sharpness,
     )
 
     result = evaluate(
-        apply(cal, scores[split.val_unseen]),
-        labels[split.val_unseen],
-        [generators[i] for i in split.val_unseen],
+        apply(cal, scores[report_idx]),
+        labels[report_idx],
+        [generators[i] for i in report_idx],
         CONFIG.decision_confidence,
     )
     seen_result = evaluate(

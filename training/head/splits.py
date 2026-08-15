@@ -18,6 +18,43 @@ class Split:
     val_unseen: np.ndarray
 
 
+def split_for_calibration(
+    indices: np.ndarray,
+    generators: np.ndarray,
+    labels: np.ndarray,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Halve a validation set into calibration and reporting parts.
+
+    Fitting the decision threshold on the same images the score is reported
+    against inflates that score: the threshold is chosen knowing the answers.
+    Splitting per generator keeps both halves representative, so the reported
+    number is what an unseen benchmark would actually see.
+    """
+    rng = np.random.default_rng(seed)
+    calibration: list[np.ndarray] = []
+    report: list[np.ndarray] = []
+
+    generators = np.asarray(generators)
+    for generator in sorted(set(generators.tolist())):
+        for cls in (0, 1):
+            mask = (generators == generator) & (labels == cls)
+            group = np.asarray(indices)[mask] if len(indices) == len(mask) else None
+            if group is None:
+                group = np.flatnonzero(mask)
+            if group.size == 0:
+                continue
+            shuffled = rng.permutation(group)
+            cut = len(shuffled) // 2
+            calibration.append(shuffled[:cut])
+            report.append(shuffled[cut:])
+
+    return (
+        np.sort(np.concatenate(calibration)) if calibration else np.array([], dtype=int),
+        np.sort(np.concatenate(report)) if report else np.array([], dtype=int),
+    )
+
+
 def make_splits(
     generators: list[str],
     labels: np.ndarray,

@@ -15,13 +15,31 @@ OPSET = 17
 
 
 def export_head(head: TrainedHead, path: Path) -> Path:
-    weights = head.weights.astype(np.float32).reshape(head.dim, 1)
-    bias = np.array([head.bias], dtype=np.float32)
+    """Emit the head as ONNX: dense layers with ReLU between, none after."""
+    nodes = []
+    initializers = []
+    current = "features"
+    last = len(head.layers) - 1
 
-    nodes = [
-        helper.make_node("MatMul", ["features", "W"], ["projected"]),
-        helper.make_node("Add", ["projected", "B"], ["score"]),
-    ]
+    for index, (weights, bias) in enumerate(head.layers):
+        w_name, b_name = f"W{index}", f"B{index}"
+        initializers.append(
+            numpy_helper.from_array(np.asarray(weights, dtype=np.float32), name=w_name)
+        )
+        initializers.append(
+            numpy_helper.from_array(
+                np.asarray(bias, dtype=np.float32).reshape(-1), name=b_name
+            )
+        )
+        matmul_out = f"mm{index}"
+        add_out = "score" if index == last else f"add{index}"
+        nodes.append(helper.make_node("MatMul", [current, w_name], [matmul_out]))
+        nodes.append(helper.make_node("Add", [matmul_out, b_name], [add_out]))
+        if index < last:
+            relu_out = f"relu{index}"
+            nodes.append(helper.make_node("Relu", [add_out], [relu_out]))
+            current = relu_out
+
     graph = helper.make_graph(
         nodes,
         "head",
@@ -29,10 +47,7 @@ def export_head(head: TrainedHead, path: Path) -> Path:
             helper.make_tensor_value_info("features", TensorProto.FLOAT, [1, head.dim])
         ],
         outputs=[helper.make_tensor_value_info("score", TensorProto.FLOAT, [1, 1])],
-        initializer=[
-            numpy_helper.from_array(weights, name="W"),
-            numpy_helper.from_array(bias, name="B"),
-        ],
+        initializer=initializers,
     )
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", OPSET)])
     model.ir_version = 9
@@ -53,6 +68,7 @@ def export_calibration(
         "dim": head.dim,
         "backbone_key": backbone_key,
         "l2_normalize": True,
+        "head_kind": head.kind,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
