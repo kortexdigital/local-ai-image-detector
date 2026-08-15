@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Local AI Image Detector settings</title>
+    <link rel="stylesheet" href="../popup/popup.css" />
+    <style>
+      body { width: 460px; }
+      label { display: block; margin: 14px 0 4px; font-weight: 600; }
+      .hint { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
+      input[type='number'] { width: 90px; }
+      #saved { color: var(--real); font-size: 12px; min-height: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>Settings</h1>
+
+    <label><input type="checkbox" id="enabled" /> Analyze images automatically</label>
+
+    <label for="threshold">Flag as AI-generated at or above</label>
+    <input type="number" id="threshold" min="1" max="99" step="1" /> %
+    <p class="hint">
+      The model is calibrated so that 65% is its best decision point. Moving
+      this away from 65 trades one kind of mistake for the other.
+    </p>
+
+    <label for="minImageSide">Ignore images smaller than</label>
+    <input type="number" id="minImageSide" min="16" max="1024" step="8" /> px
+    <p class="hint">Keeps icons, avatars and spacers out of the queue.</p>
+
+    <label><input type="checkbox" id="showRealBadges" /> Show badges on images judged real</label>
+
+    <p id="saved"></p>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

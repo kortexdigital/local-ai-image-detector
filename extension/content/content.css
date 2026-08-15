@@ -1,0 +1,58 @@
+/*
+ * Badge styling.
+ *
+ * Every declaration is defensive. This stylesheet is injected into pages with
+ * their own aggressive CSS, so each property that matters is stated outright
+ * rather than inherited, and the badge is pinned above page content without
+ * ever intercepting a click meant for the page.
+ */
+
+.aiid-badge {
+  position: absolute !important;
+  z-index: 2147483646 !important;
+  margin: 0 !important;
+  padding: 3px 7px !important;
+  border-radius: 5px !important;
+  border: 1px solid rgba(0, 0, 0, 0.35) !important;
+  font: 600 11px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif !important;
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+  white-space: nowrap !important;
+  pointer-events: auto !important;
+  cursor: help !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: saturate(140%) blur(2px) !important;
+  transition: opacity 120ms ease !important;
+  opacity: 0.94 !important;
+}
+
+.aiid-badge:hover {
+  opacity: 1 !important;
+}
+
+.aiid-pending {
+  background: rgba(24, 26, 32, 0.85) !important;
+  color: #cfd3dc !important;
+}
+
+.aiid-ai {
+  background: rgba(176, 42, 55, 0.94) !important;
+  color: #fff5f5 !important;
+}
+
+.aiid-real {
+  background: rgba(22, 101, 74, 0.9) !important;
+  color: #ecfdf5 !important;
+}
+
+.aiid-error {
+  background: rgba(70, 74, 86, 0.9) !important;
+  color: #d7dae2 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aiid-badge {
+    transition: none !important;
+  }
+}
