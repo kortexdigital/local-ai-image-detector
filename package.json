@@ -13,7 +13,9 @@
     "test": "node --test \"eval/tests/*.test.mjs\"",
     "eval": "node eval/run-benchmark.mjs",
     "parity": "node eval/parity.mjs",
-    "smoke": "node eval/smoke.mjs"
+    "smoke": "node eval/smoke.mjs",
+    "offline": "node eval/offline-check.mjs",
+    "verify": "npm run build && npm test && npm run smoke && npm run offline"
   },
   "devDependencies": {
     "onnxruntime-web": "1.20.1",

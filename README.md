@@ -145,11 +145,26 @@ that stage is bounded by cosine similarity (measured 0.983) instead. That
 difference was measured to cost nothing: browser balanced accuracy came out
 slightly above the Python figure on the same images.
 
+Prove it needs no network. This puts Chrome offline before the extension loads
+anything and refuses every request that is not a `chrome-extension:` URL:
+
+```bash
+npm run offline
+```
+
 Run the unit tests:
 
 ```bash
 npm test
 ```
+
+Or run the whole chain at once:
+
+```bash
+npm run verify
+```
+
+Measured results are in `docs/superpowers/reports/2026-08-15-browser-evaluation.md`.
 
 ## Training pipeline
 
