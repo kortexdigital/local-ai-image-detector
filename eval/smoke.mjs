@@ -24,7 +24,24 @@ import puppeteer from 'puppeteer';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
+const FIXTURES = path.join(ROOT, 'eval', 'fixtures');
 const BENCH = path.join(ROOT, 'data', 'benchmark');
+
+/**
+ * Prefer the exported benchmark when it exists, otherwise fall back to the
+ * checked-in fixtures. These checks prove the pipeline runs, not how accurate
+ * it is, so any decodable image will do; the fixtures are generated rather
+ * than copied so the repository redistributes no dataset image.
+ */
+async function imageDir(preferred) {
+  try {
+    const entries = await fs.readdir(preferred);
+    if (entries.some((f) => /\.(jpe?g|png)$/i.test(f))) return preferred;
+  } catch {
+    // fall through
+  }
+  return FIXTURES;
+}
 
 async function pickImages(dir, count) {
   const entries = await fs.readdir(dir);
@@ -51,9 +68,13 @@ async function main() {
     throw new Error('dist/ not found. Run `npm run build` first.');
   });
 
-  const real = await pickImages(path.join(BENCH, 'real'), 3);
-  const ai = await pickImages(path.join(BENCH, 'ai'), 3);
-  const images = [...real, ...ai];
+  const realDir = await imageDir(path.join(BENCH, 'real'));
+  const aiDir = await imageDir(path.join(BENCH, 'ai'));
+  const images =
+    realDir === aiDir
+      ? await pickImages(realDir, 4)
+      : [...(await pickImages(realDir, 3)), ...(await pickImages(aiDir, 3))];
+  if (images.length === 0) throw new Error('no images to test with');
   const byName = new Map(images.map((i) => [i.name, i.bytes]));
   const page = buildPage(images);
 

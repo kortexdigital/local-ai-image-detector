@@ -22,7 +22,24 @@ import puppeteer from 'puppeteer';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
+const FIXTURES = path.join(ROOT, 'eval', 'fixtures');
 const BENCH = path.join(ROOT, 'data', 'benchmark');
+
+/**
+ * Prefer the exported benchmark when it exists, otherwise fall back to the
+ * checked-in fixtures. These checks prove the pipeline runs, not how accurate
+ * it is, so any decodable image will do; the fixtures are generated rather
+ * than copied so the repository redistributes no dataset image.
+ */
+async function imageDir(preferred) {
+  try {
+    const entries = await fs.readdir(preferred);
+    if (entries.some((f) => /\.(jpe?g|png)$/i.test(f))) return preferred;
+  } catch {
+    // fall through
+  }
+  return FIXTURES;
+}
 
 async function firstImage(dir) {
   const entries = await fs.readdir(dir);
@@ -89,16 +106,17 @@ async function main() {
     process.stdout.write(`  models loaded offline, backend ${status.backend}\n`);
 
     const results = [];
-    for (const [label, dir] of [
-      ['real', path.join(BENCH, 'real')],
-      ['ai', path.join(BENCH, 'ai')],
-    ]) {
+    const dirs = [
+      ['first', await imageDir(path.join(BENCH, 'real'))],
+      ['second', await imageDir(path.join(BENCH, 'ai'))],
+    ];
+    for (const [label, dir] of dirs) {
       const file = await firstImage(dir);
       const base64 = (await fs.readFile(file)).toString('base64');
       const scored = await page.evaluate((b64) => globalThis.__aiidScore(b64), base64);
       results.push({ label, confidence: scored.confidence, verdict: scored.verdict });
       process.stdout.write(
-        `  scored a ${label} image offline: ${(scored.confidence * 100).toFixed(1)}% -> ${scored.verdict}\n`,
+        `  scored the ${label} image offline: ${(scored.confidence * 100).toFixed(1)}% -> ${scored.verdict}\n`,
       );
     }
 
