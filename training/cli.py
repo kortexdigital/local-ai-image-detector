@@ -10,6 +10,7 @@ import argparse
 import csv
 import json
 import logging
+import shutil
 import sys
 from pathlib import Path
 
@@ -109,6 +110,46 @@ def _train_and_report(backbone_key: str, sharpness: float) -> int:
     return 0
 
 
+def _export_benchmark(backbone_key: str, out_dir: Path) -> int:
+    """Copy the reporting half of the held-out split into real/ and ai/ folders.
+
+    The browser harness scores whatever is in those folders. Exporting exactly
+    the images the Python gate reported on is what makes the two numbers
+    comparable: a difference between them is then a difference in the code
+    path, not a difference in the sample.
+    """
+    features, labels, generators = _load(backbone_key)
+    split = make_splits(generators, labels, HELD_OUT_GENERATORS, CONFIG.seed)
+    generators_arr = np.asarray(generators)
+    _, report_idx = split_for_calibration(
+        split.val_unseen,
+        generators_arr[split.val_unseen],
+        labels[split.val_unseen],
+        CONFIG.seed,
+    )
+
+    base = CONFIG.features_dir / backbone_key
+    with (base / "rows.csv").open(newline="", encoding="utf-8") as handle:
+        relpaths = [r["relpath"] for r in csv.DictReader(handle)]
+
+    real_dir, ai_dir = out_dir / "real", out_dir / "ai"
+    for directory in (real_dir, ai_dir):
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(parents=True, exist_ok=True)
+
+    counts = {"real": 0, "ai": 0}
+    for index in report_idx:
+        source = CONFIG.cache_dir / relpaths[index]
+        if not source.exists():
+            continue
+        target_dir = ai_dir if labels[index] == 1 else real_dir
+        shutil.copy2(source, target_dir / f"{generators[index]}__{source.name}")
+        counts["ai" if labels[index] == 1 else "real"] += 1
+
+    print(json.dumps({"exported": counts, "out": str(out_dir)}, indent=2))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     parser = argparse.ArgumentParser(prog="training")
@@ -124,11 +165,17 @@ def main(argv: list[str] | None = None) -> int:
     train.add_argument("backbone")
     train.add_argument("--sharpness", type=float, default=1.0)
 
+    export = sub.add_parser("export-benchmark")
+    export.add_argument("backbone")
+    export.add_argument("--out", default="data/benchmark")
+
     args = parser.parse_args(argv)
 
     if args.command == "fetch":
         fetch_all(CONFIG.cache_dir, CONFIG.data_dir / "manifest.csv", CONFIG.seed)
         return 0
+    if args.command == "export-benchmark":
+        return _export_benchmark(args.backbone, Path(args.out))
     if args.command == "extract":
         extract_all(
             args.backbone,
