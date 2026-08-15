@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import concurrent.futures as futures
+import io
 import json
 import sys
 import urllib.error
@@ -24,6 +25,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from PIL import Image  # noqa: E402
+
+from training.datasets.fetch import image_bytes_from_cell  # noqa: E402
 from training.datasets.sources import SOURCES  # noqa: E402
 
 ROWS_ENDPOINT = "https://datasets-server.huggingface.co/rows"
@@ -49,19 +53,37 @@ def probe(source) -> tuple[str, str, str | None, int | None, list[str]]:
         return source.key, type(exc).__name__, None, None, []
 
     row = payload["rows"][0]["row"]
-    image_columns = [k for k, v in row.items() if isinstance(v, dict) and "src" in v]
+
+    # Check that the declared column actually yields a decodable image rather
+    # than that the API labels it as one. Some publishers store raw bytes or a
+    # base64 string, which the API does not tag as an image struct even though
+    # the downloader reads it fine. A survey that reports false problems stops
+    # being read.
+    cell = row.get(source.image_column)
+    usable = False
+    if isinstance(cell, dict) and "src" in cell:
+        usable = True
+    else:
+        raw = image_bytes_from_cell(cell)
+        if raw:
+            try:
+                Image.open(io.BytesIO(raw)).verify()
+                usable = True
+            except Exception:
+                usable = False
+
     return (
         source.key,
         "OK",
         source.repo_id,
         payload.get("num_rows_total"),
-        image_columns,
+        [source.image_column] if usable else [],
     )
 
 
 def main() -> int:
     problems = 0
-    with futures.ThreadPoolExecutor(max_workers=8) as pool:
+    with futures.ThreadPoolExecutor(max_workers=3) as pool:
         results = list(pool.map(probe, SOURCES))
 
     by_key = {s.key: s for s in SOURCES}
@@ -73,8 +95,8 @@ def main() -> int:
 
         if status != "OK":
             problems += 1
-        elif source.image_column not in columns:
-            print(f"          ^ MISMATCH: registry says {source.image_column!r}, API says {columns}")
+        elif not columns:
+            print(f"          ^ UNREADABLE: column {source.image_column!r} did not decode to an image")
             problems += 1
         elif total is not None and total < source.target_count:
             print(f"          ^ TOO SMALL: target_count {source.target_count} exceeds {total} rows")

@@ -12,6 +12,8 @@ disk usage is one shard rather than the whole dataset.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -38,13 +40,26 @@ MAX_SHARDS_PER_SOURCE = 6
 
 
 def image_bytes_from_cell(cell) -> bytes | None:
-    """Pull raw bytes out of one parquet cell holding an image."""
+    """Pull raw bytes out of one parquet cell holding an image.
+
+    Publishers disagree on the encoding: the HuggingFace image feature is a
+    struct with a `bytes` field, some datasets store raw bytes, and others
+    store a base64 string or a data URI. A cell shape we fail to recognize
+    looks exactly like an empty dataset, so all four are handled here.
+    """
     if isinstance(cell, (bytes, bytearray)):
         return bytes(cell)
     if isinstance(cell, dict):
         value = cell.get("bytes")
         if isinstance(value, (bytes, bytearray)):
             return bytes(value)
+        return None
+    if isinstance(cell, str):
+        payload = cell.split(",", 1)[1] if cell.startswith("data:") else cell
+        try:
+            return base64.b64decode(payload, validate=True)
+        except (binascii.Error, ValueError):
+            return None
     return None
 
 
@@ -134,6 +149,7 @@ def _harvest_shard(
     parquet = pq.ParquetFile(shard_path)
     group_order = rng.permutation(parquet.num_row_groups)
 
+    externally_stored = 0
     rows: list[ManifestRow] = []
     for group_index in group_order:
         if len(rows) >= needed:
@@ -143,13 +159,28 @@ def _harvest_shard(
         for cell_index in rng.permutation(len(cells)):
             if len(rows) >= needed:
                 break
-            raw = image_bytes_from_cell(cells[int(cell_index)])
+            cell = cells[int(cell_index)]
+            raw = image_bytes_from_cell(cell)
             if raw is None:
+                if isinstance(cell, dict) and cell.get("bytes") is None and cell.get("path"):
+                    externally_stored += 1
                 continue
             row = cache_image(raw, source, cache_dir, known)
             if row is not None:
                 rows.append(row)
         del cells, table
+
+    if not rows and externally_stored:
+        # Silently returning zero here reads exactly like an empty dataset,
+        # which is the worst possible failure for a data pipeline: the
+        # generator quietly vanishes from training and nothing complains.
+        log.error(
+            "source %s: parquet carries paths instead of image bytes "
+            "(%d rows checked). Shard fetching cannot reach this dataset; "
+            "remove it from the registry or fetch its files individually.",
+            source.key,
+            externally_stored,
+        )
     return rows
 
 

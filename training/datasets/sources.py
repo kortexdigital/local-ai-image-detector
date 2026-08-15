@@ -51,6 +51,16 @@ _SYNTHETIC_SEEN: tuple[Source, ...] = (
     Source("mobius", "bitmind/bm-mobius", 1, "mobius", "train", "image", 500, 9831),
     Source("imagine", "bitmind/bm-imagine", 1, "imagine", "train", "image", 500, 8707),
     Source("leonardo", "bitmind/Deepfake-leonardo-stablecog", 1, "leonardo", "train", "image", 400, 2434),
+    # GAN-era generators. Without these every seen generator is a diffusion or
+    # transformer model, and the head never learns what a GAN artifact looks
+    # like. The first measured gate scored 0.2767 on held-out BigGAN for
+    # exactly that reason: it was being asked to extrapolate to an entire
+    # family it had zero examples of.
+    # gojay/StyleGAN2-Face is deliberately absent: its parquet carries
+    # `bytes: None` with an hf:// path, so the images live as separate repo
+    # files that shard fetching cannot reach.
+    Source("stylegan3", "34data/stylegan3_T_FFHQU_processed", 1, "stylegan3", "train", "image", 600, 8000),
+    Source("stargan", "34data/STARGAN", 1, "stargan", "train", "image", 500, 5648),
 )
 
 # Synthetic images from the held-out generators. These are downloaded like any
