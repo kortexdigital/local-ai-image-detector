@@ -100,7 +100,14 @@ function ensureReady() {
  * expects, cropped to a centred square.
  */
 async function toPixelTensor(bytes) {
-  const bitmap = await createImageBitmap(new Blob([bytes]));
+  // colorSpaceConversion 'none' matters. By default the browser applies an
+  // embedded ICC profile while decoding, and the training pipeline reads the
+  // raw samples, so leaving it on makes the browser feed the head different
+  // pixels from the ones it was trained on for every profiled image.
+  const bitmap = await createImageBitmap(new Blob([bytes]), {
+    colorSpaceConversion: 'none',
+    premultiplyAlpha: 'none',
+  });
   const side = Math.min(bitmap.width, bitmap.height);
   const left = Math.floor((bitmap.width - side) / 2);
   const top = Math.floor((bitmap.height - side) / 2);
@@ -122,10 +129,34 @@ async function toPixelTensor(bytes) {
     rgb[j + 2] = data[i + 2];
   }
 
+  let pixelSum = 0;
+  for (let i = 0; i < rgb.length; i += 1) pixelSum += rgb[i];
+
   return {
     tensor: new ort.Tensor('uint8', rgb, [1, side, side, 3]),
     width: bitmap.width,
     height: bitmap.height,
+    side,
+    pixelSum,
+  };
+}
+
+/**
+ * Decode, crop and run the preprocessing graph, without the backbone.
+ *
+ * Exposed for the parity check. This is the stage that must agree exactly
+ * with the training pipeline, since both run the same ONNX graph.
+ */
+export async function preprocessBytes(bytes) {
+  const ready = await ensureReady();
+  const { tensor, width, height, side, pixelSum } = await toPixelTensor(bytes);
+  const out = await ready.preprocess.run({ pixels: tensor });
+  return {
+    values: out[ready.preprocess.outputNames[0]].data,
+    width,
+    height,
+    side,
+    pixelSum,
   };
 }
 

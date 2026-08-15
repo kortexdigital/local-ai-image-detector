@@ -124,6 +124,12 @@ The harness loads the built extension, opens a page inside it, and calls the
 same scoring function the browsing path calls. It reports balanced accuracy at
 the threshold, the confusion matrix, a threshold sweep, and throughput.
 
+Confirm the extension works end to end while browsing, badges and all:
+
+```bash
+npm run smoke
+```
+
 Check that the browser and the training pipeline still agree:
 
 ```bash

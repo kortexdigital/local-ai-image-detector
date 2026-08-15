@@ -12,7 +12,8 @@
     "build": "node scripts/build.mjs",
     "test": "node --test \"eval/tests/*.test.mjs\"",
     "eval": "node eval/run-benchmark.mjs",
-    "parity": "node eval/parity.mjs"
+    "parity": "node eval/parity.mjs",
+    "smoke": "node eval/smoke.mjs"
   },
   "devDependencies": {
     "onnxruntime-web": "1.20.1",

@@ -1,0 +1,10 @@
+{
+  "a": 0.2166752869008877,
+  "b": 1.170615261249134,
+  "t_star": -2.5456343486703865,
+  "decision_confidence": 0.65,
+  "dim": 512,
+  "backbone_key": "clip-vit-b32-int8",
+  "l2_normalize": true,
+  "head_kind": "mlp"
+}

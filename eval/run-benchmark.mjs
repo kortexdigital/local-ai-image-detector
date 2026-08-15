@@ -54,6 +54,9 @@ async function listImages(dir, limit) {
 async function launch() {
   const browser = await puppeteer.launch({
     headless: 'new',
+    // The first score pays for loading an 89 MB model, which outlasts the
+    // default 180 s protocol timeout on a cold WASM start.
+    protocolTimeout: 600000,
     args: [
       `--disable-extensions-except=${DIST}`,
       `--load-extension=${DIST}`,

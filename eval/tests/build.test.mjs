@@ -45,8 +45,17 @@ test('the built package declares Manifest V3', { skip }, async () => {
   );
   assert.equal(manifest.manifest_version, 3);
   assert.ok(manifest.background.service_worker);
-  assert.match(manifest.content_security_policy.extension_pages, /wasm-unsafe-eval/);
-  assert.ok(!/unsafe-eval[^-]/.test(manifest.content_security_policy.extension_pages));
+
+  const csp = manifest.content_security_policy.extension_pages;
+  // WebAssembly needs 'wasm-unsafe-eval'. Plain 'unsafe-eval' would allow
+  // arbitrary string evaluation and is a different thing entirely, so check
+  // for it only after removing the legitimate token it is a substring of.
+  assert.match(csp, /'wasm-unsafe-eval'/);
+  assert.ok(
+    !csp.replace(/'wasm-unsafe-eval'/g, '').includes('unsafe-eval'),
+    "extension pages must not allow plain 'unsafe-eval'",
+  );
+  assert.match(csp, /script-src[^;]*'self'/);
 });
 
 test('every model the runtime loads is present', { skip }, async () => {
