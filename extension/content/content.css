@@ -46,6 +46,13 @@
   color: #ecfdf5 !important;
 }
 
+/* Leaning generated, but under the flag threshold. Worth a second look
+   rather than a verdict either way. */
+.aiid-uncertain {
+  background: rgba(146, 96, 14, 0.92) !important;
+  color: #fffbeb !important;
+}
+
 .aiid-error {
   background: rgba(70, 74, 86, 0.9) !important;
   color: #d7dae2 !important;

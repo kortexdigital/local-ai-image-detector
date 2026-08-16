@@ -99,10 +99,13 @@ keeps scoring.
 
 ## Using it
 
-- **Badges** show the confidence directly on each image. Red means the image is
-  flagged as AI-generated at the current threshold; green means it is not.
-  Hovering shows the exact confidence, the execution backend, and any metadata
-  signal that contributed.
+![Badges on a street photography image search](docs/demo-street-photography.png)
+
+- **Badges** show one number on every image: the probability it was
+  AI-generated. Colour carries the verdict, so the number never changes
+  meaning. Red is flagged at the current threshold, amber leans generated
+  without crossing it, green does not. Hovering shows the exact confidence,
+  the execution backend, and any metadata signal that contributed.
 - **The toolbar popup** lists everything analyzed on the current tab, most
   suspicious first.
 - **The options page** controls whether analysis runs, the flag threshold, the

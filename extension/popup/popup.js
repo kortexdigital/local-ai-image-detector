@@ -39,7 +39,7 @@ function row(result) {
   const score = document.createElement('div');
   score.className = `score ${result.verdict}`;
   score.textContent = `${Math.round(result.confidence * 100)}%`;
-  score.title = 'Confidence that this image is AI-generated';
+  score.title = 'Probability this image is AI-generated';
 
   li.append(thumb, meta, score);
   return li;

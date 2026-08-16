@@ -44,16 +44,28 @@ function positionBadge(badge, image) {
 
 function renderBadge(badge, result) {
   const percent = Math.round(result.confidence * 100);
-  const isAi = result.verdict === 'ai';
 
-  badge.classList.remove('aiid-pending', 'aiid-ai', 'aiid-real', 'aiid-error');
-  badge.classList.add(isAi ? 'aiid-ai' : 'aiid-real');
-  badge.textContent = isAi ? `AI ${percent}%` : `Real ${100 - percent}%`;
+  // The badge always shows the same quantity: the probability the image is
+  // AI-generated. Showing the complement below the threshold produced
+  // contradictions, because an image at 60% is under the 65% flag while being
+  // more likely generated than not, and the badge would read "Real 40%".
+  // Colour carries the verdict; the number never changes meaning.
+  badge.classList.remove(
+    'aiid-pending',
+    'aiid-ai',
+    'aiid-real',
+    'aiid-uncertain',
+    'aiid-error',
+  );
+  if (result.verdict === 'ai') badge.classList.add('aiid-ai');
+  else if (result.confidence >= 0.5) badge.classList.add('aiid-uncertain');
+  else badge.classList.add('aiid-real');
+  badge.textContent = `${percent}% AI`;
 
   const lines = [
-    `AI-generated confidence: ${(result.confidence * 100).toFixed(1)}%`,
+    `Probability this image is AI-generated: ${(result.confidence * 100).toFixed(1)}%`,
     `Flagged at or above ${(settings.threshold * 100).toFixed(0)}%`,
-    `Backend: ${result.backend}`,
+    `Backend: ${result.backend} (on-device)`,
   ];
   if (result.reason) lines.push(`Signal: ${result.reason}`);
   badge.title = lines.join('\n');
