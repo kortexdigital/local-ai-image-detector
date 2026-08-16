@@ -115,16 +115,33 @@ async function main() {
       window.scrollTo(0, 0);
     });
 
-    process.stdout.write('Waiting for badges to appear\n');
+    // Wait for the queue to drain rather than for some arbitrary number of
+    // badges. Stopping at the first few produces a screenshot of work in
+    // progress, which reads as the extension having skipped everything below
+    // the fold when it had simply not got there yet.
+    process.stdout.write('Waiting for scoring to settle\n');
     const deadline = Date.now() + args.wait;
+    const countBadges = () =>
+      page.evaluate(() => ({
+        scored: document.querySelectorAll('.aiid-ai, .aiid-real, .aiid-uncertain').length,
+        pending: document.querySelectorAll('.aiid-pending').length,
+      }));
+
     let count = 0;
+    let stable = 0;
     while (Date.now() < deadline) {
-      count = await page.evaluate(
-        () => document.querySelectorAll('.aiid-badge.aiid-ai, .aiid-badge.aiid-real').length,
-      );
-      if (count >= 8) break;
+      const { scored, pending } = await countBadges();
+      if (scored === count && pending === 0 && scored > 0) {
+        stable += 1;
+        if (stable >= 3) break;
+      } else {
+        stable = 0;
+      }
+      count = scored;
+      process.stdout.write(`  ${scored} scored, ${pending} in flight\r`);
       await new Promise((resolve) => setTimeout(resolve, 3000));
     }
+    process.stdout.write('\n');
 
     const badges = await page.evaluate(() =>
       [...document.querySelectorAll('.aiid-badge')].map((b) => b.textContent),
