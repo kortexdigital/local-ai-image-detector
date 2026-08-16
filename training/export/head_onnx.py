@@ -15,30 +15,46 @@ OPSET = 17
 
 
 def export_head(head: TrainedHead, path: Path) -> Path:
-    """Emit the head as ONNX: dense layers with ReLU between, none after."""
+    """Emit the head as ONNX.
+
+    Each ensemble member becomes its own chain of dense layers with ReLU
+    between them and none after, and the members' logits are averaged into a
+    single output. Exporting the ensemble as one graph keeps the browser to a
+    single session and a single call.
+    """
     nodes = []
     initializers = []
-    current = "features"
-    last = len(head.layers) - 1
+    member_outputs = []
 
-    for index, (weights, bias) in enumerate(head.layers):
-        w_name, b_name = f"W{index}", f"B{index}"
-        initializers.append(
-            numpy_helper.from_array(np.asarray(weights, dtype=np.float32), name=w_name)
-        )
-        initializers.append(
-            numpy_helper.from_array(
-                np.asarray(bias, dtype=np.float32).reshape(-1), name=b_name
+    for member_index, layers in enumerate(head.members):
+        current = "features"
+        last = len(layers) - 1
+        for layer_index, (weights, bias) in enumerate(layers):
+            w_name = f"W{member_index}_{layer_index}"
+            b_name = f"B{member_index}_{layer_index}"
+            initializers.append(
+                numpy_helper.from_array(np.asarray(weights, dtype=np.float32), name=w_name)
             )
-        )
-        matmul_out = f"mm{index}"
-        add_out = "score" if index == last else f"add{index}"
-        nodes.append(helper.make_node("MatMul", [current, w_name], [matmul_out]))
-        nodes.append(helper.make_node("Add", [matmul_out, b_name], [add_out]))
-        if index < last:
-            relu_out = f"relu{index}"
-            nodes.append(helper.make_node("Relu", [add_out], [relu_out]))
-            current = relu_out
+            initializers.append(
+                numpy_helper.from_array(
+                    np.asarray(bias, dtype=np.float32).reshape(-1), name=b_name
+                )
+            )
+            matmul_out = f"mm{member_index}_{layer_index}"
+            add_out = f"add{member_index}_{layer_index}"
+            nodes.append(helper.make_node("MatMul", [current, w_name], [matmul_out]))
+            nodes.append(helper.make_node("Add", [matmul_out, b_name], [add_out]))
+            if layer_index < last:
+                relu_out = f"relu{member_index}_{layer_index}"
+                nodes.append(helper.make_node("Relu", [add_out], [relu_out]))
+                current = relu_out
+            else:
+                member_outputs.append(add_out)
+
+    if len(member_outputs) == 1:
+        nodes.append(helper.make_node("Identity", member_outputs, ["score"]))
+    else:
+        nodes.append(helper.make_node("Mean", member_outputs, ["score"]))
 
     graph = helper.make_graph(
         nodes,
@@ -68,7 +84,9 @@ def export_calibration(
         "dim": head.dim,
         "backbone_key": backbone_key,
         "l2_normalize": True,
+        "append_log_norm": True,
         "head_kind": head.kind,
+        "ensemble_members": len(head.members),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

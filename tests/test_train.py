@@ -4,6 +4,7 @@ from training.head.splits import Split
 from training.head.train import (
     TrainedHead,
     balanced_accuracy,
+    build_features,
     l2_normalize,
     raw_scores,
     train_head,
@@ -48,12 +49,13 @@ def test_train_head_learns_a_separable_problem():
     features, labels = _separable()
     idx = np.arange(len(labels))
     split = Split(train=idx[::2], val_seen=idx[1::4], val_unseen=idx[3::4])
-    head = train_head(features, labels, split, seed=0)
+    inputs = build_features(features)
+    head = train_head(inputs, labels, split, seed=0)
 
     assert isinstance(head, TrainedHead)
-    assert head.dim == features.shape[1]
+    assert head.dim == inputs.shape[1]
 
-    scores = raw_scores(head, l2_normalize(features[split.val_unseen]))
+    scores = raw_scores(head, inputs[split.val_unseen])
     predictions = (scores > 0).astype(int)
     assert balanced_accuracy(labels[split.val_unseen], predictions) > 0.9
 
@@ -62,6 +64,7 @@ def test_raw_scores_are_logits_not_probabilities():
     features, labels = _separable()
     idx = np.arange(len(labels))
     split = Split(train=idx[::2], val_seen=idx[1::4], val_unseen=idx[3::4])
-    head = train_head(features, labels, split, seed=0)
-    scores = raw_scores(head, l2_normalize(features))
+    inputs = build_features(features)
+    head = train_head(inputs, labels, split, seed=0)
+    scores = raw_scores(head, inputs)
     assert scores.min() < 0.0 < scores.max()

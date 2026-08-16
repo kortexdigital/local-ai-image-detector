@@ -22,7 +22,7 @@ from training.export.head_onnx import export_calibration, export_head
 from training.features.extract import extract_all
 from training.head.calibrate import apply, fit_calibration
 from training.head.splits import make_splits, split_for_calibration
-from training.head.train import l2_normalize, raw_scores, train_head
+from training.head.train import build_features, raw_scores, train_head
 from training.report import evaluate, render_markdown
 
 REPORT_DIR = Path("docs/superpowers/reports")
@@ -48,14 +48,9 @@ def _train_and_report(backbone_key: str, sharpness: float) -> int:
         len(split.val_unseen),
     )
 
-    head = train_head(features, labels, split, CONFIG.seed)
-    normalized = l2_normalize(features.astype(np.float32))
-    scores = raw_scores(head, normalized)
-
-    # The threshold is fitted on the held-out generators, because that is the
-    # distribution it has to be right for, but on a different half from the
-    # one reported. Fitting and reporting on the same images would choose the
-    # threshold knowing the answers and overstate the result.
+    # The held-out generators are halved first: one half chooses the model and
+    # the threshold, the other is reported. Fitting and reporting on the same
+    # images would pick both knowing the answers.
     generators_arr = np.asarray(generators)
     calib_idx, report_idx = split_for_calibration(
         split.val_unseen,
@@ -64,11 +59,18 @@ def _train_and_report(backbone_key: str, sharpness: float) -> int:
         CONFIG.seed,
     )
 
+    inputs = build_features(features)
+    # Selecting on generators the training never saw picks the head that
+    # generalizes, rather than the one that fits the familiar ones best.
+    head = train_head(inputs, labels, split, CONFIG.seed, selection_indices=calib_idx)
+    scores = raw_scores(head, inputs)
+
     cal = fit_calibration(
         scores[calib_idx],
         labels[calib_idx],
         CONFIG.decision_confidence,
         sharpness=sharpness,
+        families=generators_arr[calib_idx],
     )
 
     result = evaluate(
@@ -163,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
 
     train = sub.add_parser("train")
     train.add_argument("backbone")
-    train.add_argument("--sharpness", type=float, default=1.0)
+    train.add_argument("--sharpness", type=float, default=3.0)
 
     export = sub.add_parser("export-benchmark")
     export.add_argument("backbone")

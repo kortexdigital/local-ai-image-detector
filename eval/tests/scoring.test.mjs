@@ -92,3 +92,18 @@ test('fused confidence always stays inside the unit interval', () => {
     }
   }
 });
+
+test('buildHeadInput appends the log norm when the model expects it', async () => {
+  const { buildHeadInput } = await import('../../extension/shared/scoring.js');
+  const embedding = Float32Array.from([3, 4]);
+  const out = buildHeadInput(embedding, { append_log_norm: true });
+  assert.equal(out.length, 3);
+  assert.ok(Math.abs(Math.hypot(out[0], out[1]) - 1) < 1e-6);
+  assert.ok(Math.abs(out[2] - Math.log(5)) < 1e-5);
+});
+
+test('buildHeadInput leaves an older model untouched', async () => {
+  const { buildHeadInput } = await import('../../extension/shared/scoring.js');
+  const out = buildHeadInput(Float32Array.from([3, 4]), { append_log_norm: false });
+  assert.equal(out.length, 2);
+});

@@ -25,6 +25,15 @@ export const MODEL_DIR = 'models/';
 /** Square input the preprocessing graph resizes to. */
 export const IMAGE_SIZE = 224;
 
+/**
+ * Longest side the training cache reduced every image to.
+ *
+ * The browser reproduces this reduction before cropping, so both paths feed
+ * the graph the same kind of downscale. Must match `cache_max_side` in
+ * training/config.py.
+ */
+export const CACHE_MAX_SIDE = 512;
+
 /** Defaults for anything the user can change on the options page. */
 export const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,

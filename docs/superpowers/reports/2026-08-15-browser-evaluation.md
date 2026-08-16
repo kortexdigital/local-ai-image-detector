@@ -8,10 +8,10 @@
 
 | Metric | Value |
 |---|---|
-| **Balanced accuracy at the 0.65 threshold** | **0.8273** |
+| **Balanced accuracy at the 0.65 threshold** | **0.8335** |
 | Required to qualify | 0.7500 |
-| True positive rate (AI detected) | 0.7931 |
-| True negative rate (real kept) | 0.8615 |
+| True positive rate (AI detected) | 0.7992 |
+| True negative rate (real kept) | 0.8677 |
 | Images scored | 2600 |
 | Backend | WebAssembly (headless Chrome exposes no WebGPU adapter) |
 | Throughput | 2.88 images per second |
@@ -120,3 +120,85 @@ Throughput on WebAssembly is 2.88 images per second, roughly 350 ms per image.
 WebGPU was unavailable in headless Chrome; on hardware that exposes an adapter
 the backbone runs there and this should improve. Browsing is unaffected either
 way, since analysis is lazy, queued two at a time, and cached per URL.
+
+---
+
+# Second pass, after an external review
+
+Three other models reviewed the design. Their suggestions were measured rather
+than adopted, and the results split cleanly into what helped, what did not, and
+one thing that was simply wrong in the system.
+
+## What was applied
+
+| Change | Effect |
+|---|---|
+| Average five heads trained from different seeds | +1.0 point |
+| Append the log embedding norm to the head input | +0.3 point |
+| Weight each generator family equally when fitting the threshold | +0.35 point, BigGAN 0.40 to 0.49 |
+| Select the head on unseen generators rather than familiar ones | corrects a selection that measured the wrong thing |
+| Raise calibration sharpness | **dead zone 0.33 to 0.097**, balanced accuracy unchanged |
+| Reproduce the training downscale before cropping | invisible here, real on the web |
+
+Browser balanced accuracy went from 0.8273 to **0.8335**, and the fraction of
+images left in the low-confidence band fell by more than two thirds.
+
+## The most valuable finding was not an accuracy gain
+
+The training cache reduces every image to a longest side of 512 before
+anything else. The browser was taking a full-resolution image, often two
+thousand pixels wide, straight into the 224 graph in one step. Those are
+different resampling cascades and they destroy different frequencies.
+
+The benchmark could not see this, because the benchmark is exported from the
+cache and is therefore already capped at 512. Every measurement in this
+document was taken on images that had already been through the training
+pipeline's downscale. The extension now performs the same reduction before
+cropping, so a large web image is treated the way training treated it.
+
+The number here does not move. The behaviour on the images the extension will
+actually meet does.
+
+## The sharpness knob was specified and never wired up
+
+The design document called for pushing the score distribution away from the
+middle so that the result holds up if the evaluation threshold is read as an
+abstention band rather than a decision boundary. That was never implemented,
+and a third of all images sat between 0.35 and 0.65.
+
+Because the calibration map holds its crossing at the fitted threshold, raising
+the slope cannot move a single prediction. The dead zone fell from 0.33 to
+0.097 with balanced accuracy identical to four decimal places.
+
+## What was measured and rejected
+
+**An explicit spectral branch.** The suggestion was that GAN upsampling leaves
+periodic high-frequency structure that a 224-pixel semantic embedding cannot
+see, and that a small residual-statistics branch would recover it. Nineteen
+cheap features were computed over the whole training set.
+
+On its own the branch does what was predicted: BigGAN accuracy 0.733 against
+0.42 for the CLIP head. But it flags real images constantly, at 0.309, and
+concatenating it to the CLIP embedding drives BigGAN down to **0.053**, worse
+than either signal alone. The head learns the spectral signature of the
+generators it trained on, and BigGAN's differs, so the feature stops helping
+and starts misleading. Late fusion with the weight chosen on held-out data
+selected a weight of zero.
+
+Part of the blame is the feature design: its lag-8 autocorrelation and
+stride-4 sub-grids sit exactly where JPEG's 8x8 block structure lives, so it
+measures compression as much as generation. A better version might work. This
+one does not, and it is recorded rather than quietly dropped.
+
+**Replacing CLIP with a discriminatively trained backbone.** Rejected on the
+evidence: the cross-generator literature finds that end-to-end fine-tuning
+learns generator fingerprints and generalizes worse to unseen generators,
+which is the only thing that matters here.
+
+## A hypothesis the data refuted
+
+The review predicted that compression was burying the GAN signal, and that
+BigGAN would score worse on augmented images than pristine ones. Measured, it
+is the reverse: pristine 0.352, augmented 0.454. Compression is not what is
+hiding BigGAN. The geometry of the CLIP embedding is the whole story, which
+also explains why a bigger head plateaued.

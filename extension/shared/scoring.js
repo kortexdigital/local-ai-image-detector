@@ -31,6 +31,26 @@ export function applyCalibration(calibration, logit) {
   return 1 / (1 + Math.exp(-clamped));
 }
 
+/**
+ * Assemble the head's input from a raw backbone embedding.
+ *
+ * L2 normalization throws away the vector's magnitude, which carries a little
+ * signal of its own, so the log of that magnitude is appended as one extra
+ * dimension. `calibration.append_log_norm` records whether the shipped head
+ * was trained that way, so an older model keeps working.
+ */
+export function buildHeadInput(embedding, calibration) {
+  const normalized = l2Normalize(embedding);
+  if (calibration?.append_log_norm !== true) return normalized;
+
+  let sum = 0;
+  for (let i = 0; i < embedding.length; i += 1) sum += embedding[i] * embedding[i];
+  const out = new Float32Array(normalized.length + 1);
+  out.set(normalized, 0);
+  out[normalized.length] = Math.log(Math.sqrt(sum) + 1e-8);
+  return out;
+}
+
 /** @returns {'ai' | 'real'} */
 export function classify(confidence, threshold) {
   return confidence >= threshold ? 'ai' : 'real';

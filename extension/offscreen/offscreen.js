@@ -18,9 +18,19 @@
  * integer arithmetic and a pure copy, so both sides agree exactly.
  */
 
-import { DECISION_CONFIDENCE, IMAGE_SIZE, MODEL_DIR } from '../shared/constants.js';
+import {
+  CACHE_MAX_SIDE,
+  DECISION_CONFIDENCE,
+  IMAGE_SIZE,
+  MODEL_DIR,
+} from '../shared/constants.js';
 import { readGenerationSignals } from '../shared/metadata.js';
-import { applyCalibration, classify, fuseMetadata, l2Normalize } from '../shared/scoring.js';
+import {
+  applyCalibration,
+  buildHeadInput,
+  classify,
+  fuseMetadata,
+} from '../shared/scoring.js';
 
 const ort = globalThis.ort;
 
@@ -108,15 +118,41 @@ async function toPixelTensor(bytes) {
     colorSpaceConversion: 'none',
     premultiplyAlpha: 'none',
   });
-  const side = Math.min(bitmap.width, bitmap.height);
-  const left = Math.floor((bitmap.width - side) / 2);
-  const top = Math.floor((bitmap.height - side) / 2);
+
+  // Match the training pipeline's resampling cascade. Every training image was
+  // first reduced to a longest side of CACHE_MAX_SIDE, so the graph only ever
+  // saw a modest downscale into 224. A full-resolution web image taken
+  // straight to 224 in one step is a different operation and destroys
+  // different frequencies. Web pages routinely serve images far larger than
+  // the cache cap, so without this the browser feeds the head inputs the
+  // training never produced.
+  const longest = Math.max(bitmap.width, bitmap.height);
+  const scale = longest > CACHE_MAX_SIDE ? CACHE_MAX_SIDE / longest : 1;
+  const scaledWidth = Math.max(1, Math.round(bitmap.width * scale));
+  const scaledHeight = Math.max(1, Math.round(bitmap.height * scale));
+
+  const side = Math.min(scaledWidth, scaledHeight);
+  const left = Math.floor((scaledWidth - side) / 2);
+  const top = Math.floor((scaledHeight - side) / 2);
 
   const canvas = new OffscreenCanvas(side, side);
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  // Source and destination rectangles are the same size, so this is a copy
-  // rather than a resample. All scaling happens inside the ONNX graph.
-  context.drawImage(bitmap, left, top, side, side, 0, 0, side, side);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  // One draw does the cache-matching downscale and the centre crop together.
+  // When the image is already within the cap this is a pure copy and the only
+  // resampling in the whole path happens inside the ONNX graph.
+  context.drawImage(
+    bitmap,
+    left / scale,
+    top / scale,
+    side / scale,
+    side / scale,
+    0,
+    0,
+    side,
+    side,
+  );
   const { data } = context.getImageData(0, 0, side, side);
   bitmap.close();
 
@@ -176,9 +212,9 @@ export async function scoreImageBytes(bytes, { includeEmbedding = false } = {}) 
   const backboneOut = await ready.backbone.run({ [backboneInput]: pixelValues });
   const embedding = backboneOut[ready.backbone.outputNames[0]].data;
 
-  const normalized = l2Normalize(embedding);
+  const headInput = buildHeadInput(embedding, ready.calibration);
   const headOut = await ready.head.run({
-    features: new ort.Tensor('float32', normalized, [1, normalized.length]),
+    features: new ort.Tensor('float32', headInput, [1, headInput.length]),
   });
   const logit = headOut[ready.head.outputNames[0]].data[0];
   const confidence = applyCalibration(ready.calibration, logit);
@@ -190,7 +226,7 @@ export async function scoreImageBytes(bytes, { includeEmbedding = false } = {}) 
     width,
     height,
   };
-  if (includeEmbedding) result.embedding = Array.from(normalized);
+  if (includeEmbedding) result.embedding = Array.from(headInput);
   return result;
 }
 

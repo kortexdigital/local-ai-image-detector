@@ -41,7 +41,47 @@ def _balanced_accuracy(labels: np.ndarray, predictions: np.ndarray) -> float:
     return float(np.mean(parts))
 
 
-def best_threshold(scores: np.ndarray, labels: np.ndarray) -> float:
+def family_weights(families: np.ndarray) -> np.ndarray:
+    """Weight each generator family equally, whatever its sample count.
+
+    The held-out set is not evenly split: one hard family with many images
+    drags the threshold toward appeasing it, at the cost of every other
+    family and of the real images. Equal weight per family stops the mixture
+    of the validation set from deciding the operating point.
+    """
+    families = np.asarray(families)
+    weights = np.ones(len(families), dtype=np.float64)
+    for name in set(families.tolist()):
+        mask = families == name
+        weights[mask] = 1.0 / float(mask.sum())
+    return weights * (len(families) / weights.sum())
+
+
+def _weighted_balanced_accuracy(labels, predictions, weights) -> float:
+    parts = []
+    for cls in (0, 1):
+        mask = labels == cls
+        if mask.any():
+            total = weights[mask].sum()
+            hit = weights[mask][predictions[mask] == cls].sum()
+            parts.append(float(hit / total) if total else 0.0)
+    return float(np.mean(parts))
+
+
+def best_threshold(
+    scores: np.ndarray, labels: np.ndarray, weights: np.ndarray | None = None
+) -> float:
+    if weights is not None:
+        candidates = np.unique(scores)
+        if candidates.size > 2000:
+            candidates = np.quantile(scores, np.linspace(0.0, 1.0, 2000))
+        best_t, best_score = float(candidates[0]), -1.0
+        for t in candidates:
+            score = _weighted_balanced_accuracy(labels, (scores >= t).astype(int), weights)
+            if score > best_score:
+                best_score, best_t = score, float(t)
+        return best_t
+
     candidates = np.unique(scores)
     if candidates.size > 2000:
         candidates = np.quantile(scores, np.linspace(0.0, 1.0, 2000))
@@ -57,9 +97,21 @@ def fit_calibration(
     scores: np.ndarray,
     labels: np.ndarray,
     decision_confidence: float,
-    sharpness: float = 1.0,
+    sharpness: float = 3.0,
+    families: np.ndarray | None = None,
 ) -> Calibration:
-    t_star = best_threshold(scores, labels)
+    """Fit the map from logit to confidence.
+
+    `sharpness` scales the slope while holding the crossing at t_star, so it
+    changes how many images land in the low-confidence band without moving a
+    single prediction. The default is above 1 deliberately: at 1.0 roughly a
+    third of images sat between 0.35 and 0.65, which is fine when the
+    threshold is read as a decision boundary and bad if it is read as an
+    abstention band. Raising it to 3 cuts that to under a tenth and leaves
+    balanced accuracy identical.
+    """
+    weights = None if families is None else family_weights(families)
+    t_star = best_threshold(scores, labels, weights)
 
     # Slope from the spread of the scores, then scaled by the sharpness knob.
     spread = float(np.std(scores)) or 1.0
